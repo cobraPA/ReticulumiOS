@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 from .Interface import Interface
+#from .Interface import RNSInterface
 import socketserver
 import threading
 import platform
@@ -29,6 +30,10 @@ import time
 import sys
 import os
 import RNS
+# import after RNS
+# didn't help
+#from RNS.Interfaces.Interface import Interface
+#from .Interface import RNSInterface
 
 class HDLC():
     FLAG              = 0x7E
@@ -58,6 +63,7 @@ class KISS():
 class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     pass
 
+#class TCPClientInterface(RNSInterface):
 class TCPClientInterface(Interface):
     BITRATE_GUESS = 10*1000*1000
 
@@ -209,6 +215,9 @@ class TCPClientInterface(Interface):
 
             if initial:
                 RNS.log("TCP connection for "+str(self)+" established", RNS.LOG_DEBUG)
+
+            # kjb debug
+            RNS.log("tcpclient - TCP connection for "+str(self)+" established" + str(self.target_port))
         
         except Exception as e:
             if initial:
@@ -306,13 +315,22 @@ class TCPClientInterface(Interface):
 
             while True:
                 data_in = self.socket.recv(4096)
+                # kjb debug
+                # RNS.log( 'tcp-readloop - datain')
                 if len(data_in) > 0:
                     pointer = 0
                     while pointer < len(data_in):
                         byte = data_in[pointer]
                         pointer += 1
 
+                        # kjb debug
+                        #if (pointer ^ 10 == 0)
+                        #    RNS.log( 'tcp-readloop - bytes copied - '+str)
+                    
                         if self.kiss_framing:
+                            # kjb debug
+                            #if (pointer % 20 == 0):
+                            #    RNS.log( 'tcp-readloop - kiss ')
                             # Read loop for KISS framing
                             if (in_frame and byte == KISS.FEND and command == KISS.CMD_DATA):
                                 in_frame = False
@@ -340,6 +358,9 @@ class TCPClientInterface(Interface):
                                         data_buffer = data_buffer+bytes([byte])
 
                         else:
+                            # kjb debug
+                            #if (pointer % 20 == 0):
+                            #    RNS.log( 'tcp-readloop - HDLC ')
                             # Read loop for HDLC framing
                             if (in_frame and byte == HDLC.FLAG):
                                 in_frame = False
@@ -358,6 +379,11 @@ class TCPClientInterface(Interface):
                                             byte = HDLC.ESC
                                         escape = False
                                     data_buffer = data_buffer+bytes([byte])
+                                    
+                        # kjb debug
+                        #if (pointer % 10 == 0):
+                        #    RNS.log( 'tcp-readloop - bytes copied - '+str(data_buffer))
+
                 else:
                     self.online = False
                     if self.initiator and not self.detached:
@@ -410,15 +436,25 @@ class TCPServerInterface(Interface):
 
     @staticmethod
     def get_address_for_if(name):
-        import RNS.vendor.ifaddr.niwrapper as netinfo
-        ifaddr = netinfo.ifaddresses(name)
-        return ifaddr[netinfo.AF_INET][0]["addr"]
+        import importlib
+        if importlib.util.find_spec('netifaces') != None:
+            import netifaces
+            return netifaces.ifaddresses(name)[netifaces.AF_INET][0]['addr']
+        else:
+            RNS.log("Getting interface addresses from device names requires the netifaces module.", RNS.LOG_CRITICAL)
+            RNS.log("You can install it with the command: python3 -m pip install netifaces", RNS.LOG_CRITICAL)
+            RNS.panic()
 
     @staticmethod
     def get_broadcast_for_if(name):
-        import RNS.vendor.ifaddr.niwrapper as netinfo
-        ifaddr = netinfo.ifaddresses(name)
-        return ifaddr[netinfo.AF_INET][0]["broadcast"]
+        import importlib
+        if importlib.util.find_spec('netifaces') != None:
+            import netifaces
+            return netifaces.ifaddresses(name)[netifaces.AF_INET][0]['broadcast']
+        else:
+            RNS.log("Getting interface addresses from device names requires the netifaces module.", RNS.LOG_CRITICAL)
+            RNS.log("You can install it with the command: python3 -m pip install netifaces", RNS.LOG_CRITICAL)
+            RNS.panic()
 
     def __init__(self, owner, name, device=None, bindip=None, bindport=None, i2p_tunneled=False):
         super().__init__()

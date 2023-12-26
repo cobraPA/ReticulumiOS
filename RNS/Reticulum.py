@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2016-2023 Mark Qvist / unsigned.io and contributors.
+# Copyright (c) 2016-2022 Mark Qvist / unsigned.io
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -33,11 +33,13 @@ if get_platform() == "android":
     from .Interfaces.Android import SerialInterface
     from .Interfaces.Android import KISSInterface
 else:
+#    from .Interfaces import *
     from .Interfaces import *
+    from .Interfaces import Interface
 
 from .vendor.configobj import ConfigObj
 import configparser
-import multiprocessing.connection
+#import multiprocessing.connection
 import signal
 import threading
 import atexit
@@ -204,6 +206,9 @@ class Reticulum:
                 Reticulum.configdir = Reticulum.userdir+"/.config/reticulum"
             else:
                 Reticulum.configdir = Reticulum.userdir+"/.reticulum"
+                
+        # kjb cep
+        print("XXX Config ", Reticulum.configdir)
 
         if logdest == RNS.LOG_FILE:
             RNS.logdest = RNS.LOG_FILE
@@ -282,11 +287,12 @@ class Reticulum:
         if self.rpc_key == None:
             self.rpc_key  = RNS.Identity.full_hash(RNS.Transport.identity.get_private_key())
         
-        if self.is_shared_instance:
-            self.rpc_listener = multiprocessing.connection.Listener(self.rpc_addr, authkey=self.rpc_key)
-            thread = threading.Thread(target=self.rpc_loop)
-            thread.daemon = True
-            thread.start()
+    # kb cep - stub this out, no threading for shared instance yet
+#        if self.is_shared_instance:
+#            self.rpc_listener = multiprocessing.connection.Listener(self.rpc_addr, authkey=self.rpc_key)
+#            thread = threading.Thread(target=self.rpc_loop)
+#            thread.daemon = True
+#            thread.start()
 
         atexit.register(Reticulum.exit_handler)
         signal.signal(signal.SIGINT, Reticulum.sigint_handler)
@@ -1455,7 +1461,9 @@ enable_transport = False
 # user, and should generally be turned on. This directive
 # is optional and can be removed for brevity.
 
-share_instance = Yes
+#share_instance = Yes
+#Don't enable for iOS client
+share_instance = No
 
 
 # If you want to run multiple *different* shared instances
@@ -1510,5 +1518,127 @@ loglevel = 4
   [[Default Interface]]
     type = AutoInterface
     enabled = Yes
+
+## kjb debug
+
+  [[RNS Testnet Dublin]]
+    type = TCPClientInterface
+    enabled = no
+    target_host = dublin.connect.reticulum.network
+    target_port = 4965
+  [[RNS Testnet Frankfurt]]
+    type = TCPClientInterface
+    enabled = no
+    target_host = frankfurt.connect.reticulum.network
+    target_port = 5377
+
+[[Testnet Faragher]]
+type = TCPClientInterface
+enabled = yes
+target_host = betweentheborders.com
+target_port = 4242
+
+# sideband default from core.py
+[[Sideband]]
+type = TCPClientInterface
+enabled = yes
+target_host = sideband.connect.reticulum.network
+target_port = 7822
+
+  [[Local mac]]
+    type = TCPClientInterface
+    enabled = no
+    target_host = 192.168.2.13
+    target_port = 4242
+
+'''.splitlines()
+
+# iOS build version
+__default_rns_config__ = '''# This is the default Reticulum config file.
+# You should probably edit it to include any additional,
+# interfaces and settings you might need.
+
+# Only the most basic options are included in this default
+# configuration. To see a more verbose, and much longer,
+# configuration example, you can run the command:
+# rnsd --exampleconfig
+
+
+[reticulum]
+
+# If you enable Transport, your system will route traffic
+# for other peers, pass announces and serve path requests.
+# This should only be done for systems that are suited to
+# act as transport nodes, ie. if they are stationary and
+# always-on. This directive is optional and can be removed
+# for brevity.
+
+enable_transport = False
+
+
+# By default, the first program to launch the Reticulum
+# Network Stack will create a shared instance, that other
+# programs can communicate with. Only the shared instance
+# opens all the configured interfaces directly, and other
+# local programs communicate with the shared instance over
+# a local socket. This is completely transparent to the
+# user, and should generally be turned on. This directive
+# is optional and can be removed for brevity.
+
+#share_instance = Yes
+#Don't enable for iOS client
+share_instance = No
+
+
+# If you want to run multiple *different* shared instances
+# on the same system, you will need to specify different
+# shared instance ports for each. The defaults are given
+# below, and again, these options can be left out if you
+# don't need them.
+
+shared_instance_port = 37428
+instance_control_port = 37429
+
+
+# You can configure Reticulum to panic and forcibly close
+# if an unrecoverable interface error occurs, such as the
+# hardware device for an interface disappearing. This is
+# an optional directive, and can be left out for brevity.
+# This behaviour is disabled by default.
+
+panic_on_interface_error = No
+
+
+[logging]
+# Valid log levels are 0 through 7:
+#   0: Log only critical information
+#   1: Log errors and lower log levels
+#   2: Log warnings and lower log levels
+#   3: Log notices and lower log levels
+#   4: Log info and lower (this is the default)
+#   5: Verbose logging
+#   6: Debug logging
+#   7: Extreme logging
+
+loglevel = 4
+
+
+# The interfaces section defines the physical and virtual
+# interfaces Reticulum will use to communicate on. This
+# section will contain examples for a variety of interface
+# types. You can modify these or use them as a basis for
+# your own config, or simply remove the unused ones.
+
+[interfaces]
+
+  # This interface enables communication with other
+  # link-local Reticulum nodes over UDP. It does not
+  # need any functional IP infrastructure like routers
+  # or DHCP servers, but will require that at least link-
+  # local IPv6 is enabled in your operating system, which
+  # should be enabled by default in almost any OS. See
+  # the Reticulum Manual for more configuration options.
+
+
 
 '''.splitlines()

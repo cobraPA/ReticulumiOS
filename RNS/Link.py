@@ -911,9 +911,7 @@ class Link:
                         else:
                             packet.prove()
                             plaintext = self.decrypt(packet.data)
-                            if plaintext != None:
-                                self.__update_phy_stats(packet)
-                                self._channel._receive(plaintext)
+                            self._channel._receive(plaintext)
 
                 elif packet.packet_type == RNS.Packet.PROOF:
                     if packet.context == RNS.Packet.RESOURCE_PRF:

@@ -34,15 +34,25 @@ class UDPInterface(Interface):
 
     @staticmethod
     def get_address_for_if(name):
-        import RNS.vendor.ifaddr.niwrapper as netinfo
-        ifaddr = netinfo.ifaddresses(name)
-        return ifaddr[netinfo.AF_INET][0]["addr"]
+        import importlib
+        if importlib.util.find_spec('netifaces') != None:
+            import netifaces
+            return netifaces.ifaddresses(name)[netifaces.AF_INET][0]['addr']
+        else:
+            RNS.log("Getting interface addresses from device names requires the netifaces module.", RNS.LOG_CRITICAL)
+            RNS.log("You can install it with the command: python3 -m pip install netifaces", RNS.LOG_CRITICAL)
+            RNS.panic()
 
     @staticmethod
     def get_broadcast_for_if(name):
-        import RNS.vendor.ifaddr.niwrapper as netinfo
-        ifaddr = netinfo.ifaddresses(name)
-        return ifaddr[netinfo.AF_INET][0]["broadcast"]
+        import importlib
+        if importlib.util.find_spec('netifaces') != None:
+            import netifaces
+            return netifaces.ifaddresses(name)[netifaces.AF_INET][0]['broadcast']
+        else:
+            RNS.log("Getting interface addresses from device names requires the netifaces module.", RNS.LOG_CRITICAL)
+            RNS.log("You can install it with the command: python3 -m pip install netifaces", RNS.LOG_CRITICAL)
+            RNS.panic()
 
     def __init__(self, owner, name, device=None, bindip=None, bindport=None, forwardip=None, forwardport=None):
         super().__init__()

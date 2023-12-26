@@ -250,6 +250,7 @@ class I2PController:
                     return False
 
             # Wait for status from I2P control process
+            # kjb todo?  (asyncio used, but this is not async)
             time.sleep(5)
 
 

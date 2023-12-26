@@ -26,6 +26,7 @@ import threading
 from collections import deque
 
 class Interface:
+#class RNSInterface:
     IN  = False
     OUT = False
     FWD = False

@@ -30,11 +30,18 @@ import struct
 import time
 import sys
 import RNS
+# instead of .Interface above
+# didn't help
+#from RNS.Interfaces.Interface import Interface
+#from .Interface import RNSInterface
 
 
+#class AutoInterface(RNSInterface):
 class AutoInterface(Interface):
     DEFAULT_DISCOVERY_PORT = 29716
     DEFAULT_DATA_PORT      = 42671
+    # kjb test - no announce, if changed
+    #DEFAULT_DATA_PORT      = 29600
     DEFAULT_GROUP_ID       = "reticulum".encode("utf-8")
 
     SCOPE_LINK         = "2"
@@ -66,18 +73,24 @@ class AutoInterface(Interface):
         link_local_addr = re.sub(r"fe80:[0-9a-f]*::","fe80::", link_local_addr)
         return link_local_addr
 
-    def list_interfaces(self):
-        ifs = self.netinfo.interfaces()
-        return ifs
-
-    def list_addresses(self, ifname):
-        ifas = self.netinfo.ifaddresses(ifname)
-        return ifas
-
     def __init__(self, owner, name, group_id=None, discovery_scope=None, discovery_port=None, data_port=None, allowed_interfaces=None, ignored_interfaces=None, configured_bitrate=None):
-        from RNS.vendor.ifaddr import niwrapper
-        super().__init__()
-        self.netinfo = niwrapper
+        import netifaces_ios as netifaces
+        RNS.log("Importing netifaces from swift support")
+
+        #if importlib.util.find_spec('netifaces') != None:
+        #    import netifaces
+        #elif importlib.util.find_spec('netifaces_ios_swift') != None:
+        #    import netifaces_ios_swift as netifaces
+        #    RNS.log("Importing netifaces from swift support")
+        #else:
+        #    RNS.log("Using AutoInterface requires the netifaces module.", RNS.LOG_CRITICAL)
+        #    RNS.log("You can install it with the command: python3 -m pip install netifaces", RNS.LOG_CRITICAL)
+        #    RNS.panic()
+
+
+        self.netifaces = netifaces
+        self.rxb = 0
+        self.txb = 0
 
         self.HW_MTU = 1064
 
@@ -159,7 +172,7 @@ class AutoInterface(Interface):
         self.mcast_discovery_address = "ff1"+self.discovery_scope+":"+gt
 
         suitable_interfaces = 0
-        for ifname in self.list_interfaces():
+        for ifname in self.netifaces.interfaces():
             if RNS.vendor.platformutils.is_darwin() and ifname in AutoInterface.DARWIN_IGNORE_IFS and not ifname in self.allowed_interfaces:
                 RNS.log(str(self)+" skipping Darwin AWDL or tethering interface "+str(ifname), RNS.LOG_EXTREME)
             elif RNS.vendor.platformutils.is_darwin() and ifname == "lo0":
@@ -174,10 +187,10 @@ class AutoInterface(Interface):
                 if len(self.allowed_interfaces) > 0 and not ifname in self.allowed_interfaces:
                     RNS.log(str(self)+" ignoring interface "+str(ifname)+" since it was not allowed", RNS.LOG_EXTREME)
                 else:
-                    addresses = self.list_addresses(ifname)
-                    if self.netinfo.AF_INET6 in addresses:
+                    addresses = self.netifaces.ifaddresses(ifname)
+                    if self.netifaces.AF_INET6 in addresses:
                         link_local_addr = None
-                        for address in addresses[self.netinfo.AF_INET6]:
+                        for address in addresses[self.netifaces.AF_INET6]:
                             if "addr" in address:
                                 if address["addr"].startswith("fe80:"):
                                     link_local_addr = self.descope_linklocal(address["addr"])
@@ -251,6 +264,8 @@ class AutoInterface(Interface):
                 thread = threading.Thread(target=udp_server.serve_forever)
                 thread.daemon = True
                 thread.start()
+                # kjb debug
+                RNS.log('XxXxXx started UDPServer & thread >' + str(address) + ' if '+ifname + ' port '+ str(self.data_port) )
 
             job_thread = threading.Thread(target=self.peer_jobs)
             job_thread.daemon = True
@@ -274,6 +289,8 @@ class AutoInterface(Interface):
             expected_hash = RNS.Identity.full_hash(self.group_id+ipv6_src[0].encode("utf-8"))
             if data == expected_hash:
                 self.add_peer(ipv6_src[0], ifname)
+                # kjb debug
+                # RNS.log('XxXxXx  adding peer '+ ifname)
             else:
                 RNS.log(str(self)+" received peering packet on "+str(ifname)+" from "+str(ipv6_src[0])+", but authentication hash was incorrect.", RNS.LOG_DEBUG)
 
@@ -298,10 +315,10 @@ class AutoInterface(Interface):
             for ifname in self.adopted_interfaces:
                 # Check that the link-local address has not changed
                 try:
-                    addresses = self.list_addresses(ifname)
-                    if self.netinfo.AF_INET6 in addresses:
+                    addresses = self.netifaces.ifaddresses(ifname)
+                    if self.netifaces.AF_INET6 in addresses:
                         link_local_addr = None
-                        for address in addresses[self.netinfo.AF_INET6]:
+                        for address in addresses[self.netifaces.AF_INET6]:
                             if "addr" in address:
                                 if address["addr"].startswith("fe80:"):
                                     link_local_addr = self.descope_linklocal(address["addr"])
@@ -333,8 +350,6 @@ class AutoInterface(Interface):
                                         thread = threading.Thread(target=udp_server.serve_forever)
                                         thread.daemon = True
                                         thread.start()
-
-                                        self.carrier_changed = True
 
                 except Exception as e:
                     RNS.log("Could not get device information while updating link-local addresses for "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)

@@ -115,6 +115,9 @@ class LocalClientInterface(Interface):
         self.online = True
         self.is_connected_to_shared_instance = True
         self.never_connected = False
+        
+        # kjb debug
+        RNS.log('localinterface - connect ' + str(self.tagret_ip + ':' + self.target_port))
 
         return True
 

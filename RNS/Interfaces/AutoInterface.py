@@ -30,13 +30,8 @@ import struct
 import time
 import sys
 import RNS
-# instead of .Interface above
-# didn't help
-#from RNS.Interfaces.Interface import Interface
-#from .Interface import RNSInterface
 
 
-#class AutoInterface(RNSInterface):
 class AutoInterface(Interface):
     DEFAULT_DISCOVERY_PORT = 29716
     DEFAULT_DATA_PORT      = 42671
@@ -73,9 +68,19 @@ class AutoInterface(Interface):
         link_local_addr = re.sub(r"fe80:[0-9a-f]*::","fe80::", link_local_addr)
         return link_local_addr
 
+#    def list_interfaces(self):
+#        ifs = self.netinfo.interfaces()
+#        return ifs
+
+#    def list_addresses(self, ifname):
+#        ifas = self.netinfo.ifaddresses(ifname)
+#        return ifas
+
     def __init__(self, owner, name, group_id=None, discovery_scope=None, discovery_port=None, data_port=None, allowed_interfaces=None, ignored_interfaces=None, configured_bitrate=None):
         import netifaces_ios as netifaces
         RNS.log("Importing netifaces from swift support")
+
+        super().__init__()
 
         #if importlib.util.find_spec('netifaces') != None:
         #    import netifaces

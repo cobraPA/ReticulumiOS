@@ -40,7 +40,10 @@ from time import sleep
 #import sys
 import threading
 import time
-#import math
+
+## updateRNS
+import math
+
 import RNS
 # failing to load RNodeInterface , Interface not found 
 ## from RNS.Interfaces.Interface import Interface
@@ -87,20 +90,22 @@ class KISS():
     CMD_CR          = 0x05
     CMD_RADIO_STATE = 0x06
     CMD_RADIO_LOCK  = 0x07
+    CMD_ST_ALOCK    = 0x0B
+    CMD_LT_ALOCK    = 0x0C
     CMD_DETECT      = 0x08
-    CMD_IMPLICIT    = 0x09
     CMD_LEAVE       = 0x0A
     CMD_READY       = 0x0F
     CMD_STAT_RX     = 0x21
     CMD_STAT_TX     = 0x22
     CMD_STAT_RSSI   = 0x23
     CMD_STAT_SNR    = 0x24
+    CMD_STAT_CHTM   = 0x25
+    CMD_STAT_PHYPRM = 0x26
     CMD_BLINK       = 0x30
     CMD_RANDOM      = 0x40
     CMD_FB_EXT      = 0x41
     CMD_FB_READ     = 0x42
     CMD_FB_WRITE    = 0x43
-    CMD_FB_READL    = 0x44
     CMD_BT_CTRL     = 0x46
     CMD_PLATFORM    = 0x48
     CMD_MCU         = 0x49
@@ -369,8 +374,12 @@ class iOSBluetoothManager():
 # heltec dev 2
 # on black tape at display 'BH210504'
 # per:  RNode  name:  RNode  rssi:  -64  id  1B8BCDD0-F47A-9A3F-1684-FFE11351D8BF 
+# 
+# after merge, update to RNode firmware 1.69, 
+# RNode  name:  RNode  rssi:  -64  id  98048F8A-153E-0871-17A3-F27EE80BD13E
 
-        matcher = '1B8BCDD0'
+        #matcher = '1B8BCDD0'
+        matcher = '98048F8A'
         
         if True:
         #if state:
@@ -540,6 +549,10 @@ class RNodeInterface(Interface):
     RECONNECT_WAIT = 5
     PORT_IO_TIMEOUT = 3
 
+    Q_SNR_MIN_BASE = -9
+    Q_SNR_MAX      = 6
+    Q_SNR_STEP     = 2
+
     # needed for dispatch?
     bt_manager = None
     bt_target_device_name = None
@@ -565,7 +578,7 @@ class RNodeInterface(Interface):
         self, owner, name, port, frequency = None, bandwidth = None, txpower = None,
         sf = None, cr = None, flow_control = False, id_interval = None,
         allow_bluetooth = False, target_device_name = None,
-        target_device_address = None, id_callsign = None):
+        target_device_address = None, id_callsign = None, st_alock = None, lt_alock = None):
         
         print (' iOS RNode interface init() ')
 #        import importlib
@@ -653,8 +666,10 @@ class RNodeInterface(Interface):
 #        else:
 #            raise SystemError("Android-specific interface was used on non-Android OS")
 
-        self.rxb = 0
-        self.txb = 0
+## updateRNS
+#        self.rxb = 0
+#        self.txb = 0
+        super().__init__()
 
         self.HW_MTU = 508
         
@@ -680,6 +695,8 @@ class RNodeInterface(Interface):
         self.cr          = cr
         self.state       = KISS.RADIO_STATE_OFF
         self.bitrate     = 0
+        self.st_alock    = st_alock
+        self.lt_alock    = lt_alock
         self.platform    = None
         self.display     = None
         self.mcu         = None
@@ -702,7 +719,18 @@ class RNodeInterface(Interface):
         self.r_stat_rx   = None
         self.r_stat_tx   = None
         self.r_stat_rssi = None
+        self.r_stat_snr  = None
+        self.r_st_alock  = None
+        self.r_lt_alock  = None
         self.r_random    = None
+        self.r_airtime_short      = 0.0
+        self.r_airtime_long       = 0.0
+        self.r_channel_load_short = 0.0
+        self.r_channel_load_long  = 0.0
+        self.r_symbol_time_ms = None
+        self.r_symbol_rate = None
+        self.r_preamble_symbols = None
+        self.r_premable_time_ms = None
 
         self.packet_queue    = []
         self.flow_control    = flow_control
@@ -731,6 +759,14 @@ class RNodeInterface(Interface):
 
         if (self.cr == None or self.cr < 5 or self.cr > 8):
             RNS.log("Invalid coding rate configured for "+str(self), RNS.LOG_ERROR)
+            self.validcfg = False
+
+        if (self.st_alock and (self.st_alock < 0.0 or self.st_alock > 100.0)):
+            RNS.log("Invalid short-term airtime limit configured for "+str(self), RNS.LOG_ERROR)
+            self.validcfg = False
+
+        if (self.lt_alock and (self.lt_alock < 0.0 or self.lt_alock > 100.0)):
+            RNS.log("Invalid long-term airtime limit configured for "+str(self), RNS.LOG_ERROR)
             self.validcfg = False
 
         if id_interval != None and id_callsign != None:
@@ -787,9 +823,6 @@ class RNodeInterface(Interface):
                 print('after open port 4.3 - except')
 
 
-
-    def __str__(self):
-        return "RNodeInterface["+str(self.name)+"]"
 
 
     def read_mux(self, len=None):
@@ -928,6 +961,8 @@ class RNodeInterface(Interface):
 #        if self.serial != None and self.port != None:
 #            RNS.log("Serial port "+self.port+" is now open")
         if self.bt_manager != None and self.bt_manager.connected:
+            ## updateeRNS
+            self.timeout = 1500
             RNS.log("Bluetooth connection to RNode now open")
 
         RNS.log("Configuring RNode interface...", RNS.LOG_VERBOSE)
@@ -965,6 +1000,12 @@ class RNodeInterface(Interface):
         
         self.setCodingRate()
         time.sleep(0.15)
+
+        self.setSTALock()
+        time.sleep(0.15)
+        
+        self.setLTALock()
+        time.sleep(0.15)
         
         self.setRadioState(KISS.RADIO_STATE_ON)
         time.sleep(0.15)
@@ -976,7 +1017,22 @@ class RNodeInterface(Interface):
         if written != len(kiss_command):
             raise IOError("An IO error occurred while detecting hardware for "+str(self))
 
+## updateRNS - iOS unimplemented?
+    def leave(self):
+        kiss_command = bytes([KISS.FEND, KISS.CMD_LEAVE, 0xFF, KISS.FEND])
+        written = self.write_mux(kiss_command)
+        if written != len(kiss_command):
+            raise IOError("An IO error occurred while sending host left command to device")
 
+## TODO
+# enable_bluetooth
+# disable_bluetooth
+# bluetooth_pair
+# later in file - done - enable_external_framebuffer
+# later in file - done - disable_external_framebuffer
+# later in file - done - display_image
+# later in file - done - write_framebuffer
+# hard_reset (unused - only rnodeconf.py)
 
     def setFrequency(self):
         c1 = self.frequency >> 24
@@ -1023,6 +1079,30 @@ class RNodeInterface(Interface):
         written = self.write_mux(kiss_command)
         if written != len(kiss_command):
             raise IOError("An IO error occurred while configuring coding rate for "+str(self))
+
+    def setSTALock(self):
+        if self.st_alock != None:
+            at = int(self.st_alock*100)
+            c1 = at >> 8 & 0xFF
+            c2 = at & 0xFF
+            data = KISS.escape(bytes([c1])+bytes([c2]))
+
+            kiss_command = bytes([KISS.FEND])+bytes([KISS.CMD_ST_ALOCK])+data+bytes([KISS.FEND])
+            written = self.write_mux(kiss_command)
+            if written != len(kiss_command):
+                raise IOError("An IO error occurred while configuring short-term airtime limit for "+str(self))
+
+    def setLTALock(self):
+        if self.lt_alock != None:
+            at = int(self.lt_alock*100)
+            c1 = at >> 8 & 0xFF
+            c2 = at & 0xFF
+            data = KISS.escape(bytes([c1])+bytes([c2]))
+
+            kiss_command = bytes([KISS.FEND])+bytes([KISS.CMD_LT_ALOCK])+data+bytes([KISS.FEND])
+            written = self.write_mux(kiss_command)
+            if written != len(kiss_command):
+                raise IOError("An IO error occurred while configuring long-term airtime limit for "+str(self))
 
     def setRadioState(self, state):
         self.state = state
@@ -1100,8 +1180,9 @@ class RNodeInterface(Interface):
         threading.Thread(target=af, daemon=True).start()
         print(' XXXXXX - processIncoming daemon started    XXXXXXXXX')
 
-        self.r_stat_rssi = None
-        self.r_stat_snr = None
+        ## updateRNS
+        #self.r_stat_rssi = None
+        #self.r_stat_snr = None
 
 
 
@@ -1316,6 +1397,97 @@ class RNodeInterface(Interface):
                             self.r_stat_rssi = byte-RNodeInterface.RSSI_OFFSET
                         elif (command == KISS.CMD_STAT_SNR):
                             self.r_stat_snr = int.from_bytes(bytes([byte]), byteorder="big", signed=True) * 0.25
+                            try:
+                                sfs = self.r_sf-7
+                                snr = self.r_stat_snr
+                                q_snr_min = RNodeInterface.Q_SNR_MIN_BASE-sfs*RNodeInterface.Q_SNR_STEP
+                                q_snr_max = RNodeInterface.Q_SNR_MAX
+                                q_snr_span = q_snr_max-q_snr_min
+                                quality = round(((snr-q_snr_min)/(q_snr_span))*100,1)
+                                if quality > 100.0: quality = 100.0
+                                if quality < 0.0: quality = 0.0
+                                self.r_stat_q = quality
+                            except:
+                                pass
+
+                        elif (command == KISS.CMD_ST_ALOCK):
+                            if (byte == KISS.FESC):
+                                escape = True
+                            else:
+                                if (escape):
+                                    if (byte == KISS.TFEND):
+                                        byte = KISS.FEND
+                                    if (byte == KISS.TFESC):
+                                        byte = KISS.FESC
+                                    escape = False
+                                command_buffer = command_buffer+bytes([byte])
+                                if (len(command_buffer) == 2):
+                                    at = command_buffer[0] << 8 | command_buffer[1]
+                                    self.r_st_alock = at/100.0
+                                    RNS.log(str(self)+" Radio reporting short-term airtime limit is "+str(self.r_st_alock)+"%", RNS.LOG_DEBUG)
+                        elif (command == KISS.CMD_LT_ALOCK):
+                            if (byte == KISS.FESC):
+                                escape = True
+                            else:
+                                if (escape):
+                                    if (byte == KISS.TFEND):
+                                        byte = KISS.FEND
+                                    if (byte == KISS.TFESC):
+                                        byte = KISS.FESC
+                                    escape = False
+                                command_buffer = command_buffer+bytes([byte])
+                                if (len(command_buffer) == 2):
+                                    at = command_buffer[0] << 8 | command_buffer[1]
+                                    self.r_lt_alock = at/100.0
+                                    RNS.log(str(self)+" Radio reporting long-term airtime limit is "+str(self.r_lt_alock)+"%", RNS.LOG_DEBUG)
+                        elif (command == KISS.CMD_STAT_CHTM):
+                            if (byte == KISS.FESC):
+                                escape = True
+                            else:
+                                if (escape):
+                                    if (byte == KISS.TFEND):
+                                        byte = KISS.FEND
+                                    if (byte == KISS.TFESC):
+                                        byte = KISS.FESC
+                                    escape = False
+                                command_buffer = command_buffer+bytes([byte])
+                                if (len(command_buffer) == 8):
+                                    ats = command_buffer[0] << 8 | command_buffer[1]
+                                    atl = command_buffer[2] << 8 | command_buffer[3]
+                                    cus = command_buffer[4] << 8 | command_buffer[5]
+                                    cul = command_buffer[6] << 8 | command_buffer[7]
+                                    
+                                    self.r_airtime_short      = ats/100.0
+                                    self.r_airtime_long       = atl/100.0
+                                    self.r_channel_load_short = cus/100.0
+                                    self.r_channel_load_long  = cul/100.0
+                        elif (command == KISS.CMD_STAT_PHYPRM):
+                            if (byte == KISS.FESC):
+                                escape = True
+                            else:
+                                if (escape):
+                                    if (byte == KISS.TFEND):
+                                        byte = KISS.FEND
+                                    if (byte == KISS.TFESC):
+                                        byte = KISS.FESC
+                                    escape = False
+                                command_buffer = command_buffer+bytes([byte])
+                                if (len(command_buffer) == 10):
+                                    lst = (command_buffer[0] << 8 | command_buffer[1])/1000.0
+                                    lsr = command_buffer[2] << 8 | command_buffer[3]
+                                    prs = command_buffer[4] << 8 | command_buffer[5]
+                                    prt = command_buffer[6] << 8 | command_buffer[7]
+                                    cst = command_buffer[8] << 8 | command_buffer[9]
+
+                                    if lst != self.r_symbol_time_ms or lsr != self.r_symbol_rate or prs != self.r_preamble_symbols or prt != self.r_premable_time_ms or cst != self.r_csma_slot_time_ms:
+                                        self.r_symbol_time_ms    = lst
+                                        self.r_symbol_rate       = lsr
+                                        self.r_preamble_symbols  = prs
+                                        self.r_premable_time_ms  = prt
+                                        self.r_csma_slot_time_ms = cst
+                                        RNS.log(str(self)+" Radio reporting symbol time is "+str(round(self.r_symbol_time_ms,2))+"ms (at "+str(self.r_symbol_rate)+" baud)", RNS.LOG_DEBUG)
+                                        RNS.log(str(self)+" Radio reporting preamble is "+str(self.r_preamble_symbols)+" symbols ("+str(self.r_premable_time_ms)+"ms)", RNS.LOG_DEBUG)
+                                        RNS.log(str(self)+" Radio reporting CSMA slot time is "+str(self.r_csma_slot_time_ms)+"ms", RNS.LOG_DEBUG)
                         elif (command == KISS.CMD_RANDOM):
                             self.r_random = byte
                         elif (command == KISS.CMD_PLATFORM):
@@ -1326,7 +1498,7 @@ class RNodeInterface(Interface):
                             if (byte == KISS.ERROR_INITRADIO):
                                 RNS.log(str(self)+" hardware initialisation error (code "+RNS.hexrep(byte)+")", RNS.LOG_ERROR)
                                 raise IOError("Radio initialisation failure")
-                            elif (byte == KISS.ERROR_INITRADIO):
+                            elif (byte == KISS.ERROR_TXFAILED):
                                 RNS.log(str(self)+" hardware TX error (code "+RNS.hexrep(byte)+")", RNS.LOG_ERROR)
                                 raise IOError("Hardware transmit failure")
                             else:
@@ -1352,7 +1524,7 @@ class RNodeInterface(Interface):
                 if got == 0:
                     time_since_last = int(time.time()*1000) - last_read_ms
                     if len(data_buffer) > 0 and time_since_last > self.timeout:
-                        RNS.log(str(self)+" serial read timeout", RNS.LOG_DEBUG)
+                        RNS.log(str(self)+" serial read timeout in command "+str(command), RNS.LOG_WARNING)
                         data_buffer = b""
                         in_frame = False
                         command = KISS.CMD_UNKNOWN
@@ -1488,3 +1660,17 @@ class RNodeInterface(Interface):
             written = self.write_mux(kiss_command)
             if written != len(kiss_command):
                 raise IOError("An IO error occurred while writing framebuffer data device")
+
+## updateRNS
+    def detach(self):
+        self.disable_external_framebuffer()
+        self.setRadioState(KISS.RADIO_STATE_OFF)
+        self.leave()
+
+## updateRNS
+    def should_ingress_limit(self):
+        return False
+
+    def __str__(self):
+        return "RNodeInterface["+str(self.name)+"]"
+

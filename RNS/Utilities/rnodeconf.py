@@ -194,6 +194,12 @@ class ROM():
     MODEL_16            = 0x16
     MODEL_17            = 0x17
 
+    PRODUCT_SENSECAP_T1000E     = 0x24
+    MODEL_25            = 0x25
+
+    PRODUCT_WIO_1110    = 0x26
+    MODEL_27            = 0x27
+
     PRODUCT_HELTEC_T114 = 0xC2
     BOARD_HELTEC_T114   = 0x3C
     MODEL_C6            = 0xC6 # Heltec Mesh Node T114, 470-510 MHz (HT-n5262-LF)
@@ -261,6 +267,8 @@ products = {
     ROM.PRODUCT_RAK4631: "RAK4631",
     ROM.PRODUCT_OPENCOM_XL: "openCom XL",
     ROM.PRODUCT_HELTEC_T114: "Heltec Mesh Node T114",
+    ROM.PRODUCT_SENSECAP_T1000E: "SenseCAP Card Tracker T1000-E",
+    ROM.PRODUCT_WIO_1110: "Seeed Wio Tracker 1110 Dev",
 }
 
 platforms = {
@@ -317,6 +325,8 @@ models = {
     0x16: [779000000, 928000000, 22, "430 - 510 Mhz", "rnode_firmware_techo.zip", "SX1262"],
     0x17: [779000000, 928000000, 22, "779 - 928 Mhz", "rnode_firmware_techo.zip", "SX1262"],
     0x21: [820000000, 960000000, 22, "820 - 960 MHz", "rnode_firmware_opencom_xl.zip", "SX1262 + SX1280"],
+    0x25: [863000000, 928000000, 20, "863 - 928 MHz", None, "LR1110"],
+    0x27: [863000000, 928000000, 30, "863 - 928 MHz", None, "LR1110"],
     0xFE: [100000000, 1100000000, 17, "(Band capabilities unknown)", None, "Unknown"],
     0xFF: [100000000, 1100000000, 14, "(Band capabilities unknown)", None, "Unknown"],
 }
@@ -1720,6 +1730,9 @@ def main():
             print("[12] LilyGO T-Beam Supreme")
             print("[13] LilyGO T-Deck")
             print("[14] Heltec T114")
+            # 15 for Xiao ESP32S3
+            print("[16] Seeed SenseCAP Tracker T1000-E")
+            print("[17] Seeed Wio Tracker 1110 Dev Board")
             print("")
             print("---------------------------------------------------------------------------")
             print("\nEnter the number that matches your device type:\n? ", end="")
@@ -1919,6 +1932,32 @@ def main():
                     print("                      Heltec T114 RNode Installer")
                     print("")
                     print("Important! Using RNode firmware on Heltec T114 devices should currently be")
+                    print("considered experimental. It is not intended for production or critical use.")
+                    print("The currently supplied firmware is provided AS-IS as a courtesey to those")
+                    print("who would like to experiment with it. Hit enter to continue.")
+                    print("---------------------------------------------------------------------------")
+                    input()
+                elif c_dev == 16:
+                    selected_product = ROM.PRODUCT_SENSECAP_T1000E
+                    clear()
+                    print("")
+                    print("---------------------------------------------------------------------------")
+                    print("            Seeed SENSECap Card Tracker T1000-E RNode Installer")
+                    print("")
+                    print("Important! Using RNode firmware on Seeed T1000-E devices should currently be")
+                    print("considered experimental. It is not intended for production or critical use.")
+                    print("The currently supplied firmware is provided AS-IS as a courtesey to those")
+                    print("who would like to experiment with it. Hit enter to continue.")
+                    print("---------------------------------------------------------------------------")
+                    input()
+                elif c_dev == 17:
+                    selected_product = ROM.PRODUCT_WIO_1110
+                    clear()
+                    print("")
+                    print("---------------------------------------------------------------------------")
+                    print("                  Seeed Wio Tracker 1110 RNode Installer")
+                    print("")
+                    print("Important! Using RNode firmware on Wio 1110 devices should currently be")
                     print("considered experimental. It is not intended for production or critical use.")
                     print("The currently supplied firmware is provided AS-IS as a courtesey to those")
                     print("who would like to experiment with it. Hit enter to continue.")
@@ -2268,7 +2307,19 @@ def main():
                 except Exception as e:
                     print("That band does not exist, exiting now.")
                     exit()
-            
+
+            elif selected_product == ROM.PRODUCT_SENSECAP_T1000E:
+                selected_mcu = ROM.MCU_NRF52
+                # 863-928MHz
+                selected_model = ROM.MODEL_25
+                selected_platform = ROM.PLATFORM_NRF52
+
+            elif selected_product == ROM.PRODUCT_WIO_1110:
+                selected_mcu = ROM.MCU_NRF52
+                # 863-928MHz
+                selected_model = ROM.MODEL_27
+                selected_platform = ROM.PLATFORM_NRF52
+
             elif selected_product == ROM.PRODUCT_RAK4631:
                 selected_mcu = ROM.MCU_NRF52
                 print("\nWhat band is this RAK4631 for?\n")
